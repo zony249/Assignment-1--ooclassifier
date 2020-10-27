@@ -12,6 +12,8 @@ TargetWords = [
         '-40', 'jackets', 'wish', 'fog', 'pretty', 'summer'
         ]
 
+label = "#help"
+TargetWords = ["help", "get", "bad", "911"]
 
 def open_file(filename=InputFilename):
     try:
@@ -208,22 +210,27 @@ class ClassifyByTopN(ClassifyByTarget):
     def target_top_n(self, tset, num=5, label=""):
         global TargetWords
         word_freq = {}
-        for i in tset.get_instances():
-            label_from_ti = "".join(i.inst["label"][1:])
+        instances = tset.get_instances()
+        for i in instances:
+            label_from_ti = i.inst["label"]
             if label == label_from_ti:
-                for j in range(1, len(i.inst["words"])):
+                for j in range(0, len(i.inst["words"])):
+                    if i.inst["words"][j][0] == "#":
+                        i.inst["words"][j] = "".join(i.inst["words"][j][1:])
+
+
                     if i.inst["words"][j] not in word_freq:
                         word_freq[i.inst["words"][j]] = 1
                     else:
                         word_freq[i.inst["words"][j]] += 1
+        print(word_freq)
         TargetWords = []
         word_freq = sorted(word_freq.items(), key=lambda x: x[1])
         for i in range(1, len(word_freq)+1):
-            if i <= 5 or word_freq[-i][1] == word_freq[-i+1][1]:
+            if i <= num or word_freq[-i][1] == word_freq[-i+1][1]:
                 TargetWords.append(word_freq[-i][0])
             else:
                 break
-        print(TargetWords)
         return
 
 
@@ -396,8 +403,33 @@ class TrainingSet(C274):
     def update_lines(self, list_of_words, i):                       #
         self.inObjList[i] = " ".join(list_of_words)                 #
 
+    def return_nfolds(self, num=3):
+        lst_ts = []
+        lst_inObjHash = []
+        lst_inObjList = [] 
+        for i in range(num):
+            lst_inObjHash.append([])
+            lst_inObjList.append([])
+        index = 0
+        for i in range(len(self.inObjHash)):
+            if index == num:
+                index = 0
+            lst_inObjHash[index].append(self.inObjHash[i])
+            lst_inObjList[index].append(self.inObjList[i])
+            index += 1
+        
+        for i in range(num):
+            ts = TrainingSet()
+            ts.inObjHash = lst_inObjHash[i]
+            ts.inObjList = lst_inObjList[i]
+            lst_ts.append(ts)
+
+        return lst_ts
 
 def basemain():
+    global label
+    label = label
+
     tset = TrainingSet()
     run1 = ClassifyByTopN(TargetWords)
     print(run1)     # Just to show __str__
@@ -418,15 +450,36 @@ def basemain():
             inFile.close()
 
     
-    tset.preprocess(mode="")
     run1.classify_all(tset, update=True)        
-    run1.target_top_n(tset, label="weather")
-
-    if Debug:
-        tset.print_training_set()
     run1.print_config()
     run1.print_run_info()
-    run1.eval_training_set(tset, '#weather')
+    run1.eval_training_set(tset, label)
+
+
+    tset.preprocess()
+    run1.target_top_n(tset, num=3, label=label)
+    if "".join(label[1:]) in TargetWords:
+        TargetWords.remove("".join(label[1:]))
+    run1.set_target_words(TargetWords)
+    run1.classify_all(tset, update=True)
+    run1.print_config()
+    run1.eval_training_set(tset, label)
+
+
+    tss = tset.return_nfolds(2)
+
+    for i in range(2):
+        
+        #run1.target_top_n(tss[i], num=3, label="#weather")
+        #run1.set_target_words(TargetWords)
+        run1.classify_all(tss[i], update=True)
+        print(TargetWords)
+
+        if Debug:
+            tset.print_training_set()
+        run1.print_config()
+        run1.print_run_info()
+        run1.eval_training_set(tss[i], label)
     return
 
 
