@@ -197,13 +197,35 @@ class ClassifyByTarget(C274):
     def classify(self, ti, update=False, tlabel="last"):
         cl, e = self.classify_by_words(ti, update, tlabel)
         return(cl, e)
+    def classify_all(self, tset, update=False, tlabel="last"):
+        for ti in tset.get_instances():
+            cl, e = self.classify_by_words(ti, update, tlabel)
 
 class ClassifyByTopN(ClassifyByTarget):
     def __init__(self, lw=[]):
         super().__init__(lw=lw)
 
-    def target_top_n(tset, num=5, label=""):
-        pass
+    def target_top_n(self, tset, num=5, label=""):
+        global TargetWords
+        word_freq = {}
+        for i in tset.get_instances():
+            label_from_ti = "".join(i.inst["label"][1:])
+            if label == label_from_ti:
+                for j in range(1, len(i.inst["words"])):
+                    if i.inst["words"][j] not in word_freq:
+                        word_freq[i.inst["words"][j]] = 1
+                    else:
+                        word_freq[i.inst["words"][j]] += 1
+        TargetWords = []
+        word_freq = sorted(word_freq.items(), key=lambda x: x[1])
+        for i in range(1, len(word_freq)+1):
+            if i <= 5 or word_freq[-i][1] == word_freq[-i+1][1]:
+                TargetWords.append(word_freq[-i][0])
+            else:
+                break
+        print(TargetWords)
+        return
+
 
 
 
@@ -266,26 +288,57 @@ class TrainingInstance(C274):
             cl, e = run.classify(self, update=True, tlabel=tlabel)
         return(self)
     
-    def preprocess_words(self, mode=''):                                    #
-        for w in range(1, len(self.inst["words"])):                         #
-            self.inst["words"][w] = self.inst["words"][w].lower()           #
-            self.inst["words"][w] = self.rem_punc(self.inst["words"][w])    #
-            self.inst["words"][w] = self.rem_num(self.inst["words"][w])
+    def preprocess_words(self, mode=''):                                    
+        if (mode != "keep-stops" and mode != "keep-digits" 
+            and mode != "keep-symbols" and mode != ''):
+            print("wtf")
+        for w in range(1, len(self.inst["words"])):  
+            self.inst["words"][w] = self.inst["words"][w].lower()  
+            if mode != "keep-symbols":
+                self.inst["words"][w] = self.rem_punc(self.inst["words"][w])    
+            if mode != "keep-digits":
+                self.inst["words"][w] = self.rem_num(self.inst["words"][w])
+        if mode != "keep-stops":
+            self.inst["words"] = self.rem_stop(self.inst["words"])
+            
+            
+        return
 
-    def rem_punc(self, word):                                               #
-        processed = []                                                      #
-        for letter in word:                                                 #
-            if letter not in string.punctuation:                            #
-                processed.append(letter)                                    #
-        return("".join(processed))                                          #
+    def rem_punc(self, word):                                               
+        processed = []                                                      
+        for letter in word:                                                 
+            if letter not in string.punctuation:                            
+                processed.append(letter)                                    
+        return("".join(processed))                                          
     def rem_num(self, word):
-        out = word
-        if not word.isdigit():
-            out = []
-            for letter in word:
-                if not letter.isdigit():
-                    out.append(letter)
-            out = "".join(out)
+        out = word                                                          
+        if not word.isdigit():                                              
+            out = []                                                        
+            for letter in word:                                             
+                if not letter.isdigit():                                       
+                    out.append(letter)                                      
+            out = "".join(out)                                              
+        return out                                                          
+    
+    def rem_stop(self, ti_words):
+        stopwords = ["i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your",
+"yours", "yourself", "yourselves", "he", "him", "his", "himself", "she", "her",
+"hers", "herself", "it", "its", "itself", "they", "them", "their", "theirs",
+"themselves", "what", "which","who", "whom", "this", "that", "these", "those",
+"am", "is", "are", "was", "were", "be","been", "being", "have", "has", "had",
+"having", "do", "does", "did", "doing", "a", "an","the", "and", "but", "if",
+"or", "because", "as", "until", "while", "of", "at", "by", "for", "with",
+"about", "against", "between", "into", "through", "during", "before", "after",
+"above", "below", "to", "from", "up", "down", "in", "out", "on", "off", "over",
+"under", "again", "further", "then", "once", "here", "there", "when", "where",
+"why", "how", "all", "any", "both", "each", "few", "more", "most", "other",
+"some", "such", "no", "nor", "not", "only", "own", "same", "so", "than",
+"too", "very", "s", "t", "can", "will", "just", "don", "should", "now"]
+        
+        out = []
+        for i in ti_words:
+            if i not in stopwords:
+                out.append(i)
         return out
 
 
@@ -337,8 +390,8 @@ class TrainingSet(C274):
 
     def preprocess(self, mode=''):
         for i in range(len(self.inObjHash)):
-            self.inObjHash[i].preprocess_words()
-            self.update_lines(self.inObjHash[i].inst["words"], i)   #
+            self.inObjHash[i].preprocess_words(mode=mode)
+            #self.update_lines(self.inObjHash[i].inst["words"], i)   #
                                                                     #        
     def update_lines(self, list_of_words, i):                       #
         self.inObjList[i] = " ".join(list_of_words)                 #
@@ -355,29 +408,28 @@ def basemain():
     if argc == 1:   # Use stdin, or default filename
         inFile = open_file()
         assert not (inFile is None), "Assume valid file object"
-        tset.process_input_stream(inFile)
+        tset.process_input_stream(inFile, run1)
         inFile.close()
     else:
         for f in sys.argv[1:]:
             inFile = open_file(f)
             assert not (inFile is None), "Assume valid file object"
-            tset.process_input_stream(inFile)
+            tset.process_input_stream(inFile, run1)
             inFile.close()
-    
-    tset.preprocess()
-    for ti in tset.get_instances():
-        cl, e = run1.classify(ti, update=True, tlabel="read")
-        print(ti.inst["words"])
 
+    
+    tset.preprocess(mode="")
+    run1.classify_all(tset, update=True)        
+    run1.target_top_n(tset, label="weather")
 
     if Debug:
         tset.print_training_set()
     run1.print_config()
     run1.print_run_info()
     run1.eval_training_set(tset, '#weather')
-
     return
 
 
 if __name__ == "__main__":
     basemain()
+    
